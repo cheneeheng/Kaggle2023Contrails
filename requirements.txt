@@ -5,3 +5,5 @@ neptune
 lightning
 segmentation-models-pytorch
 timm
+transformers
+torchmetrics
