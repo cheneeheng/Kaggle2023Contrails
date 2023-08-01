@@ -106,3 +106,6 @@ class UnetConvnextv2(SegmentationModel):
             self.classification_head = None
         self.name = f"u-timm-{encoder_name}"
         self.initialize()
+
+
+UnetConvnextv2()

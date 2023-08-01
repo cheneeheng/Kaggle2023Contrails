@@ -115,9 +115,8 @@ class LightningModule(pl.LightningModule):
         all_preds = torch.sigmoid(all_preds)
         self.val_step_outputs.clear()
         self.val_step_labels.clear()
-        val_dice = dice(all_preds, all_labels.long())
-        self.log("val_dice", val_dice, on_step=False,
-                 on_epoch=True, prog_bar=True)
+        score = dice(all_preds, all_labels.long())
+        self.log("val_dice", score, on_step=False, on_epoch=True, prog_bar=True)
         if self.trainer.global_rank == 0:
             print(f"\nEpoch: {self.current_epoch}", flush=True)
 

@@ -12,7 +12,8 @@ if __name__ == "__main__":
     #                            unzip=True)
     # upload dataset
     api.dataset_create_version(
-        "./",
+        "./kaggle2023contrails",
+        dir_mode="zip",
         version_notes=f"Updated on {datetime.datetime.now().strftime('%Y-%m-%d')}",
     )
-    logging.info(f"Updated eehengchen/chen-contrails-2023 dataset.")
+    logging.info(f"Updated eehengchen/chen-contrails-2023-dummy dataset.")
