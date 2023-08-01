@@ -1,0 +1,7 @@
+numpy==1.24.3
+torch
+torchvision
+neptune
+lightning
+segmentation-models-pytorch
+timm

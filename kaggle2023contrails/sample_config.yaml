@@ -1,0 +1,48 @@
+data_path: "/kaggle/input/contrails-images-ash-color"
+output_dir: models_sample
+log_dir: logs_sample
+
+folds:
+    n_splits: 4
+    random_state: 42
+train_folds: [0, 1, 2, 3]
+    
+seed: 42
+
+train_bs: 48  # 48
+valid_bs: 128
+workers: 2
+
+progress_bar_refresh_rate: 1
+
+early_stop:
+    monitor: "val_loss"
+    mode: "min"
+    patience: 999
+    verbose: 1
+
+trainer:
+    max_epochs: 25
+    min_epochs: 25
+    enable_progress_bar: True
+    precision: "16-mixed"
+    devices: 2
+
+model:
+    seg_model       : "Unet"
+    encoder_name    : "timm-resnest26d"
+    image_size      : 384
+    decoder_channels: [256, 128, 64, 32, 16]
+    loss:
+        name       : "DiceLoss"
+        loss_smooth: 1.0
+    optimizer_params:
+        lr          : 0.0005
+        weight_decay: 0.0
+    scheduler:
+        name: "cosine_with_hard_restarts_schedule_with_warmup"
+        params:
+            cosine_with_hard_restarts_schedule_with_warmup:
+                num_warmup_steps  : 175
+                num_training_steps: 4375
+                num_cycles        : 1
