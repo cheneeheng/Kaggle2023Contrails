@@ -35,6 +35,7 @@ class LightningModule(pl.LightningModule):
         self.model = seg_models[config["seg_model"]](
             encoder_name=config["encoder_name"],
             encoder_weights="imagenet",
+            decoder_channels=config["decoder_channels"],
             in_channels=3,
             classes=1,
             activation=None,
