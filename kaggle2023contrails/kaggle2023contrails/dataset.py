@@ -87,9 +87,10 @@ class ContrailsDataset(torch.utils.data.Dataset):
         )
 
     def _update_random_resize_crop_params(self):
-        self.image_transforms.transforms[self.rrc_image_idx].update_params()
-        self.label_transforms.transforms[self.rrc_label_idx].set_params(
-            *(self.image_transforms.transforms[self.rrc_image_idx].get_params()))
+        if self.rrc_image_idx is not None:
+            self.image_transforms.transforms[self.rrc_image_idx].update_params()
+            self.label_transforms.transforms[self.rrc_label_idx].set_params(
+                *(self.image_transforms.transforms[self.rrc_image_idx].get_params()))
 
     def __getitem__(self, index):
         raw_data = np.load(str(self.df.iloc[index].path))
