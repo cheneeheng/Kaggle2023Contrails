@@ -26,8 +26,8 @@ class LightningModule(pl.LightningModule):
         self.val_step_outputs = []
         self.val_step_labels = []
         self.ap = Accuracy(task="binary")
-        self.acc = AveragePrecision(task="binary")
-        self.prc = PrecisionRecallCurve(task="binary")
+        self.acc = AveragePrecision(task="binary", thresholds=101)
+        self.prc = PrecisionRecallCurve(task="binary", thresholds=11)
 
     def forward(self, batch):
         imgs = batch
