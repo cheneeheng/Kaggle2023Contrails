@@ -12,7 +12,8 @@ from segmentation_models_pytorch.decoders.unet.decoder import CenterBlock
 from typing import Optional, Union, List
 
 
-class UnetDecoderExt(UnetDecoder):
+# Based on smp.decoders.unet.decoders.UnetDecoder
+class UnetDecoderExt(torch.nn.Module):
     def __init__(
         self,
         encoder_channels,
@@ -22,17 +23,19 @@ class UnetDecoderExt(UnetDecoder):
         attention_type=None,
         center=False,
     ):
-        super().__init__(encoder_channels, decoder_channels,
-                         n_blocks, use_batchnorm, attention_type, center)
+        super().__init__()
         if n_blocks != len(decoder_channels):
             raise ValueError(
                 "Model depth is {}, but you provide `decoder_channels` for {} blocks.".format(
                     n_blocks, len(decoder_channels)
                 )
             )
+        # reverse channels to start from head of encoder
         encoder_channels = encoder_channels[::-1]
+        # computing blocks input and output channels
         head_channels = encoder_channels[0]
         in_channels = [head_channels] + list(decoder_channels[:-1])
+        # [0, 0] cause convnext stem uses x4 reduction.
         skip_channels = list(encoder_channels[1:]) + [0, 0]
         out_channels = decoder_channels
         if center:
@@ -60,8 +63,8 @@ class UnetDecoderExt(UnetDecoder):
         return x
 
 
+# Based on smp.decoders.unet.decoders.Unet
 class UnetConvnextv2(SegmentationModel):
-    # Baed on Unet
     def __init__(
         self,
         encoder_name: str = "convnextv2_tiny.fcmae_ft_in22k_in1k",
@@ -76,12 +79,12 @@ class UnetConvnextv2(SegmentationModel):
         aux_params: Optional[dict] = None,
     ):
         super().__init__()
+        assert "convnextv2" in encoder_name
         _convnextv2 = timm.create_model(
             f"hf_hub:timm/{encoder_name}",
             pretrained=True,
             features_only=True,
         )
-        _convnextv2 = _convnextv2.eval()
         self.encoder = _convnextv2
         self.encoder.output_stride = _convnextv2.feature_info.reduction()[-1]
         self.decoder = UnetDecoderExt(
@@ -106,6 +109,3 @@ class UnetConvnextv2(SegmentationModel):
             self.classification_head = None
         self.name = f"u-timm-{encoder_name}"
         self.initialize()
-
-
-UnetConvnextv2()

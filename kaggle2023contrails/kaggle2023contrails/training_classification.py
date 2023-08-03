@@ -1,56 +1,26 @@
 import torch
-import torch.nn.functional as F
 from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
-from torchmetrics.functional import dice
+from torchmetrics.functional import accuracy
 import lightning.pytorch as pl
 from lightning.pytorch.loggers import CSVLogger
 from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping, TQDMProgressBar
 from neptune.types import File
-import segmentation_models_pytorch as smp
 from transformers import get_cosine_with_hard_restarts_schedule_with_warmup
 
-from .model.UnetConvnextv2 import UnetConvnextv2
-
-seg_models = {
-    "Unet": smp.Unet,
-    "Unet++": smp.UnetPlusPlus,
-    "MAnet": smp.MAnet,
-    "Linknet": smp.Linknet,
-    "FPN": smp.FPN,
-    "PSPNet": smp.PSPNet,
-    "PAN": smp.PAN,
-    "DeepLabV3": smp.DeepLabV3,
-    "DeepLabV3+": smp.DeepLabV3Plus,
-    "UnetConvnextv2": UnetConvnextv2
-}
+from .model.Convnextv2 import Convnextv2
 
 
 class LightningModule(pl.LightningModule):
     def __init__(self, config):
         super().__init__()
         self.config = config
-        self.model = seg_models[config["seg_model"]](
-            encoder_name=config["encoder_name"],
-            encoder_weights="imagenet",
-            decoder_channels=config["decoder_channels"],
-            in_channels=3,
-            classes=1,
-            activation=None,
-        )
-        if self.config["loss"]["name"] == "DiceLoss":
-            self.loss_module = smp.losses.DiceLoss(
-                mode="binary",
-                smooth=config["loss"]["loss_smooth"]
-            )
-        elif self.config["loss"]["name"] == "FocalLoss":
-            self.loss_module = smp.losses.FocalLoss(
-                mode="binary",
-                alpha=config["loss"]["alpha"],
-                gamma=config["loss"]["gamma"],
-                normalized=config["loss"]["normalized"]
-            )
+        self.model = Convnextv2(model_name=config["encoder_name"],
+                                pretrained=True,
+                                features_only=False)
+        if self.config["loss"]["name"] == "BCELoss":
+            self.loss_module = torch.nn.BCEWithLogitsLoss()
         else:
             raise ValueError("Unknown Loss... " + self.config["loss"]["name"])
         self.val_step_outputs = []
@@ -89,8 +59,6 @@ class LightningModule(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         imgs, labels = batch
         preds = self.model(imgs)
-        if self.config["image_size"] != 256:
-            preds = F.interpolate(preds, size=256, mode='bilinear')
         loss = self.loss_module(preds, labels)
         self.log("train_loss", loss, on_step=True,
                  on_epoch=True, prog_bar=True, batch_size=16)
@@ -102,8 +70,6 @@ class LightningModule(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         imgs, labels = batch
         preds = self.model(imgs)
-        if self.config["image_size"] != 256:
-            preds = F.interpolate(preds, size=256, mode='bilinear')
         loss = self.loss_module(preds, labels)
         self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
         self.val_step_outputs.append(preds)
@@ -115,9 +81,8 @@ class LightningModule(pl.LightningModule):
         all_preds = torch.sigmoid(all_preds)
         self.val_step_outputs.clear()
         self.val_step_labels.clear()
-        score = dice(all_preds, all_labels.long())
-        self.log("val_dice", score, on_step=False,
-                 on_epoch=True, prog_bar=True)
+        score = accuracy(all_preds, all_labels.long(), "binary")
+        self.log("val_acc", score, on_step=False, on_epoch=True, prog_bar=True)
         if self.trainer.global_rank == 0:
             print(f"\nEpoch: {self.current_epoch}", flush=True)
 
@@ -141,7 +106,7 @@ def training(config, trn_ds, val_ds, ckpt_filename, neptune_logger):
 
     checkpoint_callback = ModelCheckpoint(
         save_weights_only=True,
-        monitor="val_dice",
+        monitor="val_acc",
         dirpath=config["output_dir"],
         mode="max",
         filename=ckpt_filename,
