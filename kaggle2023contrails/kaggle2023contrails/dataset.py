@@ -45,12 +45,12 @@ class ContrailsDataset(torch.utils.data.Dataset):
                  mean=(0.485, 0.456, 0.406),
                  std=(0.229, 0.224, 0.225),
                  random_crop_resize: dict | None = None,
-                 classifictaion: bool = False,
+                 classification: bool = False,
                  train: bool = True):
         self.df = df
         self.trn = train
         self.image_size = image_size
-        self.classifictaion = classifictaion
+        self.classification = classification
         # Image -------
         self.image_transforms = T.Compose([
             T.ToTensor(),  # changes to [c,h,w]
@@ -96,8 +96,8 @@ class ContrailsDataset(torch.utils.data.Dataset):
                 *(self.image_transforms.transforms[self.rrc_image_idx].get_params()))
 
     def _get_classification_label(self, label):
-        if self.classifictaion:
-            label = label.sum().clip(0, 1)
+        if self.classification:
+            label = label.sum().clip(0, 1).unsqueeze(-1)
         return label
 
     def __getitem__(self, index):
