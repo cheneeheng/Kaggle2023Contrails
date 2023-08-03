@@ -2,7 +2,7 @@ import torch
 from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
-from torchmetrics.functional import accuracy
+from torchmetrics import Accuracy, AveragePrecision, PrecisionRecallCurve
 import lightning.pytorch as pl
 from lightning.pytorch.loggers import CSVLogger
 from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping, TQDMProgressBar
@@ -25,6 +25,9 @@ class LightningModule(pl.LightningModule):
             raise ValueError("Unknown Loss... " + self.config["loss"]["name"])
         self.val_step_outputs = []
         self.val_step_labels = []
+        self.ap = Accuracy(task="binary")
+        self.acc = AveragePrecision(task="binary")
+        self.prc = PrecisionRecallCurve(task="binary")
 
     def forward(self, batch):
         imgs = batch
@@ -81,8 +84,14 @@ class LightningModule(pl.LightningModule):
         all_preds = torch.sigmoid(all_preds)
         self.val_step_outputs.clear()
         self.val_step_labels.clear()
-        score = accuracy(all_preds, all_labels.long(), "binary")
-        self.log("val_acc", score, on_step=False, on_epoch=True, prog_bar=True)
+        ap = self.ap(all_preds, all_labels.long())
+        acc = self.acc(all_preds, all_labels.long())
+        self.log("val_ap", ap, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val_acc", acc, on_step=False, on_epoch=True, prog_bar=True)
+        self.prc(all_preds, all_labels.long())
+        fig, ax = self.prc.plot()
+        self.logger.experiment["val_precision_recall"].append(
+            File.as_image(fig))
         if self.trainer.global_rank == 0:
             print(f"\nEpoch: {self.current_epoch}", flush=True)
 
