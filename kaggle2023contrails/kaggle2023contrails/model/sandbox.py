@@ -12,6 +12,8 @@ model = Mask2FormerForUniversalSegmentation.from_pretrained(
     "facebook/mask2former-swin-tiny-ade-semantic")
 processor = Mask2FormerImageProcessor.from_pretrained(
     "facebook/mask2former-swin-tiny-ade-semantic")
+print(processor)
+
 url = "http://images.cocodataset.org/val2017/000000039769.jpg"
 image = Image.open(requests.get(url, stream=True).raw)
 inputs = processor(images=image, return_tensors="pt")

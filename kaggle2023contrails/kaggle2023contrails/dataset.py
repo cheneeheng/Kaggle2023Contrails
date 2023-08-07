@@ -69,7 +69,7 @@ class ContrailsDataset(torch.utils.data.Dataset):
         # Label -------
         self.label_transforms = T.Compose([
             T.ToTensor(),  # changes to [1,h,w]
-            T.ConvertImageDtype(label_dtype),
+            T.ConvertImageDtype(torch.float),
         ])
         if random_crop_resize is not None:
             self.label_transforms.transforms.append(
@@ -77,6 +77,7 @@ class ContrailsDataset(torch.utils.data.Dataset):
                                   image_size=image_size,
                                   **random_crop_resize)
             )
+        self.label_dtype = label_dtype
         # Misc -------
         self.rrc_image_idx = next(
             (i for i, x in enumerate(self.image_transforms.transforms)
@@ -109,6 +110,7 @@ class ContrailsDataset(torch.utils.data.Dataset):
         image = self.image_transforms(image)  # C,H,W
         label = self.label_transforms(label).squeeze(0)  # H,W
         label = self._get_classification_label(label)
+        label = label.to(self.label_dtype)
         return image, label
 
     def __len__(self):

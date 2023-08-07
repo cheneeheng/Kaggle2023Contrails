@@ -43,6 +43,7 @@ class LightningModule(pl.LightningModule):
             self.collate_fn = _model.generate_collate_fn()
             self.model = _model.model
             self.processor = _model.processor
+            self.post_process_semantic_segmentation = _model.post_process_semantic_segmentation  # noqa
         else:
             self.model = seg_models[config["seg_model"]](
                 encoder_name=config["encoder_name"],
@@ -100,16 +101,35 @@ class LightningModule(pl.LightningModule):
             lr_scheduler_dict = {"scheduler": scheduler, "interval": "step"}
             return {"optimizer": optimizer, "lr_scheduler": lr_scheduler_dict}
 
+    def _maskformer_step(self, imgs, labels, postprocess=False):
+        batch = self.processor(
+            [i for i in imgs],
+            segmentation_maps=[l for l in labels],
+            return_tensors="pt",
+        )
+        outputs = self.model(
+            pixel_values=batch["pixel_values"].to(self.model.device),
+            mask_labels=[labels.to(self.model.device)
+                         for labels in batch["mask_labels"]],
+            class_labels=[labels.to(self.model.device)
+                          for labels in batch["class_labels"]],
+        )
+        output_dict = {"outputs": outputs, "loss": outputs.loss}
+        if postprocess:
+            preds = self.post_process_semantic_segmentation(
+                outputs, self.config["image_size"])
+            preds = torch.stack(preds, axis=0)
+            if self.config["image_size"] != 256:
+                preds = F.interpolate(preds, size=256, mode='bilinear')
+            output_dict["preds"] = preds
+        return output_dict
+
     def training_step(self, batch, batch_idx):
+        imgs, labels = batch
         if self.config["seg_model"] == "Mask2Former":
-            outputs = self.model(
-                pixel_values=batch["pixel_values"],
-                mask_labels=batch["mask_labels"],
-                class_labels=batch["class_labels"],
-            )
-            loss = outputs.loss
+            output_dict = self._maskformer_step(imgs, labels)
+            loss = output_dict["loss"]
         else:
-            imgs, labels = batch
             preds = self.model(imgs)
             if self.config["image_size"] != 256:
                 preds = F.interpolate(preds, size=256, mode='bilinear')
@@ -122,21 +142,12 @@ class LightningModule(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
+        imgs, labels = batch
         if self.config["seg_model"] == "Mask2Former":
-            outputs = self.model(
-                pixel_values=batch["pixel_values"],
-                mask_labels=batch["mask_labels"],
-                class_labels=batch["class_labels"],
-            )
-            loss = outputs.loss
-            preds = torch.stack(
-                self.processor.post_process_semantic_segmentation(
-                    outputs, target_sizes=[(256, 256)]),
-                axis=0
-            )
-            labels = batch["original_labels"]
+            output_dict = self._maskformer_step(imgs, labels)
+            loss = output_dict["loss"]
+            preds = output_dict["preds"]
         else:
-            imgs, labels = batch
             preds = self.model(imgs)
             if self.config["image_size"] != 256:
                 preds = F.interpolate(preds, size=256, mode='bilinear')
@@ -168,14 +179,12 @@ def training(config, trn_ds, val_ds, ckpt_filename, neptune_logger):
         batch_size=config["train_bs"],
         shuffle=True,
         num_workers=config["workers"],
-        collate_fn=model.collate_fn
     )
     data_loader_validation = DataLoader(
         val_ds,
         batch_size=config["valid_bs"],
         shuffle=False,
         num_workers=config["workers"],
-        collate_fn=model.collate_fn
     )
 
     checkpoint_callback = ModelCheckpoint(
