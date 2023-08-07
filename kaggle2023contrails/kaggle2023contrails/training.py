@@ -40,6 +40,7 @@ class LightningModule(pl.LightningModule):
                 ignore_index=config.get("ignore_index", None),
                 reduce_labels=config.get("reduce_labels", False),
             )
+            self.collate_fn = _model.generate_collate_fn()
             self.model = _model.model
             self.processor = _model.processor
         else:
@@ -51,6 +52,7 @@ class LightningModule(pl.LightningModule):
                 classes=config.get("classes", 1),
                 activation=None,
             )
+            self.collate_fn = None
         if self.config["loss"]["name"] == "DiceLoss":
             self.loss_module = smp.losses.DiceLoss(
                 mode="binary",
@@ -157,27 +159,24 @@ class LightningModule(pl.LightningModule):
             print(f"\nEpoch: {self.current_epoch}", flush=True)
 
 
-def training(config,
-             trn_ds, val_ds,
-             ckpt_filename, neptune_logger,
-             trn_collate_fn=None, val_collate_fn=None):
+def training(config, trn_ds, val_ds, ckpt_filename, neptune_logger):
+
+    model = LightningModule(config["model"])
 
     data_loader_train = DataLoader(
         trn_ds,
         batch_size=config["train_bs"],
         shuffle=True,
         num_workers=config["workers"],
-        collate_fn=trn_collate_fn
+        collate_fn=model.collate_fn
     )
     data_loader_validation = DataLoader(
         val_ds,
         batch_size=config["valid_bs"],
         shuffle=False,
         num_workers=config["workers"],
-        collate_fn=val_collate_fn
+        collate_fn=model.collate_fn
     )
-
-    model = LightningModule(config["model"])
 
     checkpoint_callback = ModelCheckpoint(
         save_weights_only=True,
