@@ -45,7 +45,7 @@ class ContrailsDataset(torch.utils.data.Dataset):
                  mean: tuple | None = (0.485, 0.456, 0.406),
                  std: tuple | None = (0.229, 0.224, 0.225),
                  random_crop_resize: dict | None = None,
-                 float_label: bool = True,
+                 label_dtype: torch.dtype = torch.float,
                  classification: bool = False,
                  train: bool = True):
         self.df = df
@@ -55,7 +55,7 @@ class ContrailsDataset(torch.utils.data.Dataset):
         # Image -------
         self.image_transforms = T.Compose([
             T.ToTensor(),  # changes to [c,h,w]
-            T.ConvertImageDtype(torch.float),
+            T.ConvertImageDtype(label_dtype),
         ])
         if image_size != 256:
             self.image_transforms.transforms.append(T.Resize(image_size))
@@ -67,11 +67,10 @@ class ContrailsDataset(torch.utils.data.Dataset):
             )
         self.image_transforms.transforms.append(T.Normalize(mean, std))
         # Label -------
-        self.label_transforms = T.Compose([T.ToTensor(),])
-        if float_label:
-            self.label_transforms.transforms.append(
-                T.ConvertImageDtype(torch.float)
-            )
+        self.label_transforms = T.Compose([
+            T.ToTensor(),  # changes to [1,h,w]
+            T.ConvertImageDtype(label_dtype),
+        ])
         if random_crop_resize is not None:
             self.label_transforms.transforms.append(
                 RandomResizedCrop(size=image_size,
