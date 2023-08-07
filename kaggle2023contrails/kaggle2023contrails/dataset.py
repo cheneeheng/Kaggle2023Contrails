@@ -55,7 +55,7 @@ class ContrailsDataset(torch.utils.data.Dataset):
         # Image -------
         self.image_transforms = T.Compose([
             T.ToTensor(),  # changes to [c,h,w]
-            T.ConvertImageDtype(label_dtype),
+            T.ConvertImageDtype(torch.float),
         ])
         if image_size != 256:
             self.image_transforms.transforms.append(T.Resize(image_size))
