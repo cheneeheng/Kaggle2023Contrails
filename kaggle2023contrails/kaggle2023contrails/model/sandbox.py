@@ -8,8 +8,17 @@ from transformers import Mask2FormerImageProcessor
 from transformers import Mask2FormerConfig
 
 
+# config = Mask2FormerConfig.from_pretrained(
+#     "facebook/mask2former-swin-tiny-ade-semantic")
+# config.num_labels=2
+# config.num_queries=2
+
 model = Mask2FormerForUniversalSegmentation.from_pretrained(
-    "facebook/mask2former-swin-tiny-ade-semantic")
+    "facebook/mask2former-swin-tiny-ade-semantic",
+    num_labels=2,
+    num_queries=32,
+    ignore_mismatched_sizes=True
+)
 processor = Mask2FormerImageProcessor.from_pretrained(
     "facebook/mask2former-swin-tiny-ade-semantic")
 print(processor)
@@ -22,9 +31,6 @@ inputs = processor(images=image, return_tensors="pt")
 # pixel_mask - 1 for valid pixels and 0 for invalid/padded pixels
 # mask_labels
 # class_labels
-
-c = Mask2FormerConfig.from_pretrained(
-    "facebook/mask2former-swin-tiny-ade-semantic")
 
 with torch.no_grad():
     outputs = model(**inputs)

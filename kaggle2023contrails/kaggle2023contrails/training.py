@@ -14,7 +14,7 @@ from transformers import get_cosine_with_hard_restarts_schedule_with_warmup
 from .model.UnetConvnextv2 import UnetConvnextv2
 from .model.Mask2Former import Mask2Former
 
-seg_models = {
+SEG_MODELS = {
     "Unet": smp.Unet,
     "Unet++": smp.UnetPlusPlus,
     "MAnet": smp.MAnet,
@@ -30,13 +30,14 @@ seg_models = {
 
 
 class LightningModule(pl.LightningModule):
-    def __init__(self, config):
+    def __init__(self, config, seg_models=SEG_MODELS):
         super().__init__()
         self.config = config
         if config["seg_model"] == "Mask2Former":
             _model = seg_models[config["seg_model"]](
                 model_name=config["model_name"],
                 num_labels=config.get("classes", 2),
+                num_queries=config.get("queries", 100),
                 ignore_index=config.get("ignore_index", None),
                 reduce_labels=config.get("reduce_labels", False),
             )
@@ -144,7 +145,7 @@ class LightningModule(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         imgs, labels = batch
         if self.config["seg_model"] == "Mask2Former":
-            output_dict = self._maskformer_step(imgs, labels)
+            output_dict = self._maskformer_step(imgs, labels, postprocess=True)
             loss = output_dict["loss"]
             preds = output_dict["preds"]
         else:
@@ -170,9 +171,11 @@ class LightningModule(pl.LightningModule):
             print(f"\nEpoch: {self.current_epoch}", flush=True)
 
 
-def training(config, trn_ds, val_ds, ckpt_filename, neptune_logger):
+def training(config, lightning_module,
+             trn_ds, val_ds,
+             ckpt_filename, neptune_logger):
 
-    model = LightningModule(config["model"])
+    model = lightning_module(config["model"])
 
     data_loader_train = DataLoader(
         trn_ds,

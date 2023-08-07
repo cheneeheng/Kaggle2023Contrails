@@ -31,6 +31,7 @@ class Mask2Former(torch.nn.Module):
         self,
         model_name: str = "facebook/mask2former-swin-tiny-ade-semantic",
         num_labels: int = 2,
+        num_queries: int = 100,
         ignore_index: int | None = None,
         reduce_labels: bool = False,
     ):
@@ -50,6 +51,7 @@ class Mask2Former(torch.nn.Module):
         self.model = Mask2FormerForUniversalSegmentation.from_pretrained(
             model_name,
             num_labels=num_labels,
+            num_queries=num_queries,
             ignore_mismatched_sizes=True
         )
         self.name = model_name.replace("/", "___")
