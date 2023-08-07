@@ -90,7 +90,7 @@ class LightningModule(pl.LightningModule):
         self.log("val_acc", acc, on_step=False, on_epoch=True, prog_bar=True)
         self.prc(all_preds, all_labels.long())
         fig, ax = self.prc.plot()
-        self.logger.experiment["val_precision_recall"].append(
+        self.logger.experiment["images/val_precision_recall"].append(
             File.as_image(fig))
         if self.trainer.global_rank == 0:
             print(f"\nEpoch: {self.current_epoch}", flush=True)

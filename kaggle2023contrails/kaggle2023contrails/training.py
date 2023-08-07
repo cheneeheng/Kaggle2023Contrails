@@ -12,6 +12,7 @@ import segmentation_models_pytorch as smp
 from transformers import get_cosine_with_hard_restarts_schedule_with_warmup
 
 from .model.UnetConvnextv2 import UnetConvnextv2
+from .model.Mask2Former import Mask2Former
 
 seg_models = {
     "Unet": smp.Unet,
@@ -23,7 +24,8 @@ seg_models = {
     "PAN": smp.PAN,
     "DeepLabV3": smp.DeepLabV3,
     "DeepLabV3+": smp.DeepLabV3Plus,
-    "UnetConvnextv2": UnetConvnextv2
+    "UnetConvnextv2": UnetConvnextv2,
+    "Mask2Former": Mask2Former
 }
 
 
@@ -31,14 +33,24 @@ class LightningModule(pl.LightningModule):
     def __init__(self, config):
         super().__init__()
         self.config = config
-        self.model = seg_models[config["seg_model"]](
-            encoder_name=config["encoder_name"],
-            encoder_weights="imagenet",
-            decoder_channels=config["decoder_channels"],
-            in_channels=3,
-            classes=1,
-            activation=None,
-        )
+        if config["seg_model"] == "Mask2Former":
+            _model = seg_models[config["seg_model"]](
+                model_name=config["model_name"],
+                num_labels=config.get("classes", 2),
+                ignore_index=config.get("ignore_index", None),
+                reduce_labels=config.get("reduce_labels", False),
+            )
+            self.model = _model.model
+            self.processor = _model.processor
+        else:
+            self.model = seg_models[config["seg_model"]](
+                encoder_name=config["encoder_name"],
+                encoder_weights="imagenet",
+                decoder_channels=config["decoder_channels"],
+                in_channels=3,
+                classes=config.get("classes", 1),
+                activation=None,
+            )
         if self.config["loss"]["name"] == "DiceLoss":
             self.loss_module = smp.losses.DiceLoss(
                 mode="binary",
@@ -87,11 +99,19 @@ class LightningModule(pl.LightningModule):
             return {"optimizer": optimizer, "lr_scheduler": lr_scheduler_dict}
 
     def training_step(self, batch, batch_idx):
-        imgs, labels = batch
-        preds = self.model(imgs)
-        if self.config["image_size"] != 256:
-            preds = F.interpolate(preds, size=256, mode='bilinear')
-        loss = self.loss_module(preds, labels)
+        if self.config["seg_model"] == "Mask2Former":
+            outputs = self.model(
+                pixel_values=batch["pixel_values"],
+                mask_labels=batch["mask_labels"],
+                class_labels=batch["class_labels"],
+            )
+            loss = outputs.loss
+        else:
+            imgs, labels = batch
+            preds = self.model(imgs)
+            if self.config["image_size"] != 256:
+                preds = F.interpolate(preds, size=256, mode='bilinear')
+            loss = self.loss_module(preds, labels)
         self.log("train_loss", loss, on_step=True,
                  on_epoch=True, prog_bar=True, batch_size=16)
         for param_group in self.trainer.optimizers[0].param_groups:
@@ -100,11 +120,25 @@ class LightningModule(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        imgs, labels = batch
-        preds = self.model(imgs)
-        if self.config["image_size"] != 256:
-            preds = F.interpolate(preds, size=256, mode='bilinear')
-        loss = self.loss_module(preds, labels)
+        if self.config["seg_model"] == "Mask2Former":
+            outputs = self.model(
+                pixel_values=batch["pixel_values"],
+                mask_labels=batch["mask_labels"],
+                class_labels=batch["class_labels"],
+            )
+            loss = outputs.loss
+            preds = torch.stack(
+                self.processor.post_process_semantic_segmentation(
+                    outputs, target_sizes=[(256, 256)]),
+                axis=0
+            )
+            labels = batch["original_labels"]
+        else:
+            imgs, labels = batch
+            preds = self.model(imgs)
+            if self.config["image_size"] != 256:
+                preds = F.interpolate(preds, size=256, mode='bilinear')
+            loss = self.loss_module(preds, labels)
         self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
         self.val_step_outputs.append(preds)
         self.val_step_labels.append(labels)
@@ -112,7 +146,8 @@ class LightningModule(pl.LightningModule):
     def on_validation_epoch_end(self):
         all_preds = torch.cat(self.val_step_outputs)
         all_labels = torch.cat(self.val_step_labels)
-        all_preds = torch.sigmoid(all_preds)
+        if self.config["seg_model"] != "Mask2Former":
+            all_preds = torch.sigmoid(all_preds)
         self.val_step_outputs.clear()
         self.val_step_labels.clear()
         score = dice(all_preds, all_labels.long())
@@ -122,19 +157,24 @@ class LightningModule(pl.LightningModule):
             print(f"\nEpoch: {self.current_epoch}", flush=True)
 
 
-def training(config, trn_ds, val_ds, ckpt_filename, neptune_logger):
+def training(config,
+             trn_ds, val_ds,
+             ckpt_filename, neptune_logger,
+             trn_collate_fn=None, val_collate_fn=None):
 
     data_loader_train = DataLoader(
         trn_ds,
         batch_size=config["train_bs"],
         shuffle=True,
         num_workers=config["workers"],
+        collate_fn=trn_collate_fn
     )
     data_loader_validation = DataLoader(
         val_ds,
         batch_size=config["valid_bs"],
         shuffle=False,
         num_workers=config["workers"],
+        collate_fn=val_collate_fn
     )
 
     model = LightningModule(config["model"])
